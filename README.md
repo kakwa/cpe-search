@@ -18,9 +18,8 @@ Install dependencies:
 ```shell
 sudo apt install libsaxonhe-java
 ```
-
+Build the DB csv & json DB:
 ```shell
-# Build the DB csv & json DB
 ./cpe-processing-script.sh
 
 # Result directory
