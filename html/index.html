@@ -86,7 +86,13 @@
         .pagination-info {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 5px;
+        }
+        .pagination-info input {
+            width: 40px;
+            text-align: center;
+            margin: 0 2px;
+            padding: 2px 4px;
         }
         .copy-btn {
             background: none;
@@ -142,9 +148,9 @@
         <div class="controls">
             <button onclick="loadData(true)">Refresh Data</button>
             <input type="text" id="filterInput" placeholder="Search in Vendor or Product" onkeyup="debouncedFilter()">
-            <select id="pageSize" default="16" onchange="changePageSize()">
+            <select id="pageSize" onchange="changePageSize()">
                 <option value="8">8 per page</option>
-                <option value="16">16 per page</option>
+                <option value="16" selected>16 per page</option>
                 <option value="33">33 per page</option>
                 <option value="66">66 per page</option>
                 <option value="100">100 per page</option>
@@ -168,7 +174,7 @@
         <div class="pagination">
             <button onclick="previousPage()" id="prevPage">Previous</button>
             <div class="pagination-info">
-                <span id="pageInfo">Page 1 of 1</span>
+                Page <input id="pageInput" min="1" onchange="goToPage()"> of <span id="totalPages">1</span>
             </div>
             <button onclick="nextPage()" id="nextPage">Next</button>
         </div>
@@ -366,9 +372,11 @@
 
         function updatePagination() {
             totalPages = Math.ceil(filteredData.length / pageSize);
-            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('totalPages').textContent = totalPages;
             document.getElementById('prevPage').disabled = currentPage === 1;
             document.getElementById('nextPage').disabled = currentPage === totalPages;
+            document.getElementById('pageInput').value = currentPage;
+            document.getElementById('pageInput').max = totalPages;
         }
 
         function changePageSize() {
@@ -392,6 +400,22 @@
                 updatePagination();
                 renderTable();
             }
+        }
+
+        function goToPage() {
+            const input = document.getElementById('pageInput');
+            let page = parseInt(input.value);
+
+            // Validate input
+            if (isNaN(page) || page < 1) {
+                page = 1;
+            } else if (page > totalPages) {
+                page = totalPages;
+            }
+
+            currentPage = page;
+            updatePagination();
+            renderTable();
         }
 
         function highlightText(text) {
