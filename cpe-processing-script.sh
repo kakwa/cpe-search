@@ -12,6 +12,7 @@ CPE_XML="$TEMP_DIR/official-cpe-dictionary.xml"
 XSLT_FILE="$(dirname $0)/cpe-to-csv.xslt"
 OUTPUT_CSV="html/cpe-product-db.csv"
 OUTPUT_JSON="html/cpe-product-db.json"
+OUTPUT_JSON_GZ="html/cpe-product-db.json.gz"
 
 # Download CPE dictionary
 echo "Downloading CPE dictionary..."
@@ -46,10 +47,16 @@ if [ ! -f "$OUTPUT_CSV" ]; then
   exit 1
 fi
 
-cat $OUTPUT_CSV | column -J -s '☭' --table-columns 'title,vendor,product,filter' > $OUTPUT_JSON
+
+# Convert CSV to JSON and compress
+echo "Converting to JSON and compressing..."
+cat $OUTPUT_CSV | column -J -s '☭' --table-columns 'title,vendor,product,filter' | gzip -f -c > $OUTPUT_JSON_GZ
+
+
+gzip -f $OUTPUT_CSV
 
 # Clean up
 echo "Cleaning up temporary files..."
 rm -rf "$TEMP_DIR"
 
-echo "Done! CSV file created: $OUTPUT_CSV"
+echo "Done! Gzipped JSON file created: $OUTPUT_JSON_GZ"

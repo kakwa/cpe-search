@@ -5,20 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CPE Dictionary Viewer</title>
     <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-            position: sticky;
-            top: 0;
-        }
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -28,10 +14,34 @@
             margin-bottom: 20px;
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
         }
-        input, button {
+        input, button, select {
             padding: 8px;
             font-size: 14px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .table-container {
+            height: 600px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+            z-index: 1;
         }
         .highlight {
             background-color: #fff3cd;
@@ -41,61 +51,166 @@
             font-size: 12px;
             margin-top: 5px;
         }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .pagination button {
+            min-width: 40px;
+        }
+        .pagination-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="controls">
-            <button onclick="fetchCSV(true)">Refresh Data</button>
-            <input type="text" id="filterInput" placeholder="Search in Vendor or Product (case insensitive)" onkeyup="filterTable()">
+            <button onclick="loadData(true)">Refresh Data</button>
+            <input type="text" id="filterInput" placeholder="Search in Vendor or Product" onkeyup="debouncedFilter()">
+            <select id="pageSize" onchange="changePageSize()">
+                <option value="50">50 per page</option>
+                <option value="100">100 per page</option>
+            </select>
         </div>
         <div id="status" class="status"></div>
-        <table id="csvTable"></table>
+        <div class="loading" id="loading">Loading data...</div>
+        <div class="table-container">
+            <table id="dataTable">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Vendor</th>
+                        <th>Product</th>
+                        <th>Filter</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+        <div class="pagination">
+            <button onclick="previousPage()" id="prevPage">Previous</button>
+            <div class="pagination-info">
+                <span id="pageInfo">Page 1 of 1</span>
+            </div>
+            <button onclick="nextPage()" id="nextPage">Next</button>
+        </div>
     </div>
 
     <script>
         const CACHE_KEY = 'cpe_dict_cache';
-        const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours
+        let data = [];
+        let filteredData = [];
+        let currentPage = 1;
+        let pageSize = 50;
+        let totalPages = 1;
 
         // Auto-load data when page loads
-        window.onload = loadData;
+        window.onload = () => loadData(false);
 
         function updateStatus(message) {
-            const status = document.getElementById('status');
-            status.textContent = message;
+            document.getElementById('status').textContent = message;
         }
 
-        async function loadData() {
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+        const fetchDecompress = async (url, forceRefresh = false) => {
+            showLoading(true);
             const cachedData = getCachedData();
-            if (cachedData) {
-                displayCSV(cachedData);
+            let decompressedData;
+
+            if (cachedData && !forceRefresh) {
+                decompressedData = cachedData.data;
                 updateStatus('Using cached data. Last updated: ' + new Date(cachedData.timestamp).toLocaleString());
-                return;
+                showLoading(false);
+                return decompressedData;
             }
-            await fetchCSV(false);
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const ds = new DecompressionStream('gzip');
+                const reader = response.body.getReader();
+                const stream = new ReadableStream({
+                    start(controller) {
+                        function push() {
+                            reader.read().then(({ done, value }) => {
+                                if (done) {
+                                    controller.close();
+                                    return;
+                                }
+                                controller.enqueue(value);
+                                push();
+                            }).catch(error => {
+                                controller.error(error);
+                            });
+                        }
+                        push();
+                    }
+                });
+
+                const decompressedStream = stream.pipeThrough(ds);
+                const decompressedResponse = await new Response(decompressedStream);
+                decompressedData = await decompressedResponse.text();
+
+                // Cache the decompressed data
+                setCachedData(decompressedData);
+
+                return decompressedData;
+            } catch (error) {
+                console.error('Error fetching/decompressing data:', error);
+                throw error;
+            } finally {
+                showLoading(false);
+            }
+        };
+
+        async function loadData(forceRefresh = false) {
+            try {
+                updateStatus('Fetching data...');
+                const decompressedData = await fetchDecompress('./cpe-product-db.json.gz', forceRefresh);
+                console.log(decompressedData);
+                data = JSON.parse(decompressedData).table;
+                updateStatus('Data loaded successfully. Last updated: ' + new Date().toLocaleString());
+                initializeTable();
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                updateStatus('Error loading data. Using cached data if available.');
+            } finally {
+                showLoading(false);
+            }
         }
 
         function getCachedData() {
             try {
                 const cached = localStorage.getItem(CACHE_KEY);
                 if (!cached) return null;
+                return cached;
 
-                const data = JSON.parse(cached);
-                if (Date.now() - data.timestamp > CACHE_EXPIRY) {
-                    localStorage.removeItem(CACHE_KEY);
-                    return null;
-                }
-                return data;
             } catch (e) {
                 console.error('Error reading cache:', e);
                 return null;
             }
         }
 
-        function setCachedData(csvText) {
+        function setCachedData(data) {
             try {
                 const cacheData = {
-                    data: csvText,
+                    data: data,
                     timestamp: Date.now()
                 };
                 localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
@@ -104,105 +219,93 @@
             }
         }
 
-        async function fetchCSV(forceRefresh = false) {
-            const url = "./cpe-product-db.csv";
-
-            try {
-                updateStatus('Fetching data...');
-                const response = await fetch(url, { 
-                    headers: { 
-                        'Cache-Control': forceRefresh ? 'no-cache' : 'default'
-                    } 
-                });
-                const csvText = await response.text();
-                
-                if (!forceRefresh) {
-                    setCachedData(csvText);
-                }
-                
-                displayCSV(csvText);
-                updateStatus('Data loaded successfully. Last updated: ' + new Date().toLocaleString());
-            } catch (error) {
-                console.error("Error fetching data:", error);
-                alert("Failed to fetch the CSV file.");
-                updateStatus('Error loading data. Using cached data if available.');
-            }
+        function initializeTable() {
+            filteredData = [...data];
+            currentPage = 1;
+            updatePagination();
+            renderTable();
         }
 
-        function displayCSV(csvText) {
-            const rows = csvText.trim().split("\n").map(row => row.split("☭"));
-            if (!rows.length) return;
+        function renderTable() {
+            const tableBody = document.getElementById('tableBody');
+            tableBody.innerHTML = '';
 
-            const table = document.getElementById("csvTable");
-            table.innerHTML = "";
+            const start = (currentPage - 1) * pageSize;
+            const end = start + pageSize;
+            const pageData = filteredData.slice(start, end);
 
-            // Extract Vendor and Product columns (assuming headers in first row)
-            const headers = rows[0];
-            const vendorIndex = headers.indexOf("vendor");
-            const productIndex = headers.indexOf("product");
-            if (vendorIndex === -1 || productIndex === -1) {
-                alert("CSV must contain 'vendor' and 'product' columns");
-                return;
-            }
-
-            // Create headers
-            const thead = document.createElement("thead");
-            const headerRow = document.createElement("tr");
-            ["Vendor", "Product"].forEach(header => {
-                const th = document.createElement("th");
-                th.textContent = header;
-                headerRow.appendChild(th);
+            pageData.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${highlightText(item.title)}</td>
+                    <td>${highlightText(item.vendor)}</td>
+                    <td>${highlightText(item.product)}</td>
+                    <td>${highlightText(item.filter)}</td>
+                `;
+                tableBody.appendChild(row);
             });
-            thead.appendChild(headerRow);
-            table.appendChild(thead);
-
-            // Create body
-            const tbody = document.createElement("tbody");
-            rows.slice(1).forEach(row => {
-                const tr = document.createElement("tr");
-                [vendorIndex, productIndex].forEach(index => {
-                    const td = document.createElement("td");
-                    td.textContent = row[index] || "";
-                    tr.appendChild(td);
-                });
-                tbody.appendChild(tr);
-            });
-            table.appendChild(tbody);
         }
 
         function filterTable() {
-            const filter = document.getElementById("filterInput").value.toLowerCase();
-            const table = document.getElementById("csvTable");
-            const rows = table.getElementsByTagName("tr");
+            const filter = document.getElementById('filterInput').value.toLowerCase();
+            filteredData = data.filter(item =>
+                item.vendor.toLowerCase().includes(filter) ||
+                item.product.toLowerCase().includes(filter)
+            );
+            currentPage = 1;
+            updatePagination();
+            renderTable();
+        }
 
-            for (let i = 1; i < rows.length; i++) { // Skip header row
-                const cells = rows[i].getElementsByTagName("td");
-                if (cells.length >= 2) {
-                    const vendorText = cells[0].textContent || cells[0].innerText;
-                    const productText = cells[1].textContent || cells[1].innerText;
-                    
-                    // Check if either vendor or product contains the filter text
-                    const matches = vendorText.toLowerCase().includes(filter) || 
-                                  productText.toLowerCase().includes(filter);
-                    
-                    rows[i].style.display = matches ? "" : "none";
-                    
-                    // Highlight matching text if there's a filter
-                    if (filter) {
-                        cells[0].innerHTML = highlightText(vendorText, filter);
-                        cells[1].innerHTML = highlightText(productText, filter);
-                    } else {
-                        cells[0].textContent = vendorText;
-                        cells[1].textContent = productText;
-                    }
-                }
+        const debouncedFilter = debounce(filterTable, 300);
+
+        function updatePagination() {
+            totalPages = Math.ceil(filteredData.length / pageSize);
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prevPage').disabled = currentPage === 1;
+            document.getElementById('nextPage').disabled = currentPage === totalPages;
+        }
+
+        function changePageSize() {
+            pageSize = parseInt(document.getElementById('pageSize').value);
+            currentPage = 1;
+            updatePagination();
+            renderTable();
+        }
+
+        function previousPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                updatePagination();
+                renderTable();
             }
         }
 
-        function highlightText(text, filter) {
+        function nextPage() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                updatePagination();
+                renderTable();
+            }
+        }
+
+        function highlightText(text) {
+            const filter = document.getElementById('filterInput').value.toLowerCase();
             if (!filter) return text;
             const regex = new RegExp(`(${filter})`, 'gi');
             return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
     </script>
 </body>
