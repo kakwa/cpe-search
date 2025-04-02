@@ -22,7 +22,6 @@ concurrency:
 
 jobs:
   build:
-    needs: check_repo
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
