@@ -1,4 +1,4 @@
-name: Documentation
+name: CPE DB Update
 
 on:
   schedule:
