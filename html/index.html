@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CPE Dictionary Viewer</title>
+    <title>CPE Product DB Search</title>
     <style>
         .container {
-            max-width: 1200px;
+            max-width: 90%;
             margin: 0 auto;
             padding: 20px;
         }
@@ -15,6 +15,9 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
         }
         input, button, select {
             padding: 8px;
@@ -23,25 +26,40 @@
             border-radius: 4px;
         }
         .table-container {
-            height: 600px;
+            height: 50%;
             overflow-y: auto;
             border: 1px solid #ddd;
             border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            width: 100%;
         }
         table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 13px;
+            table-layout: fixed;
         }
         th, td {
-            padding: 8px;
+            padding: 8px 12px;
             text-align: left;
-            border-bottom: 1px solid #ddd;
+            border-bottom: 1px solid #eee;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 0; /* This helps with text-overflow */
         }
         th {
-            background-color: #f2f2f2;
+            background-color: #f8f9fa;
             position: sticky;
             top: 0;
             z-index: 1;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+        }
+        tr:hover {
+            background-color: #f8f9fa;
         }
         .highlight {
             background-color: #fff3cd;
@@ -70,6 +88,53 @@
             align-items: center;
             gap: 10px;
         }
+        .copy-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px;
+            color: #464646;
+            transition: color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            vertical-align: middle;
+            margin-left: 8px;
+            position: relative;
+        }
+        .copy-btn:hover {
+            color: #0d6efd;
+        }
+        .copy-btn.copied {
+            color: #198754;
+        }
+        .copy-btn svg {
+            width: 18px;
+            height: 18px;
+            display: block;
+        }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        .toast.show {
+            opacity: 1;
+        }
+        /* Column widths */
+        .col-title { width: 35%; }
+        .col-vendor { width: 15%; }
+        .col-product { width: 15%; }
+        .col-filter { width: 35%; }
     </style>
 </head>
 <body>
@@ -77,8 +142,11 @@
         <div class="controls">
             <button onclick="loadData(true)">Refresh Data</button>
             <input type="text" id="filterInput" placeholder="Search in Vendor or Product" onkeyup="debouncedFilter()">
-            <select id="pageSize" onchange="changePageSize()">
-                <option value="50">50 per page</option>
+            <select id="pageSize" default="16" onchange="changePageSize()">
+                <option value="8">8 per page</option>
+                <option value="16">16 per page</option>
+                <option value="33">33 per page</option>
+                <option value="66">66 per page</option>
                 <option value="100">100 per page</option>
             </select>
         </div>
@@ -88,10 +156,10 @@
             <table id="dataTable">
                 <thead>
                     <tr>
-                        <th>Title</th>
-                        <th>Vendor</th>
-                        <th>Product</th>
-                        <th>Filter</th>
+                        <th class="col-title">Title</th>
+                        <th class="col-vendor">Vendor</th>
+                        <th class="col-product">Product</th>
+                        <th class="col-filter">Filter</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
@@ -105,6 +173,7 @@
             <button onclick="nextPage()" id="nextPage">Next</button>
         </div>
     </div>
+    <div id="toast" class="toast">Copied to clipboard</div>
 
     <script>
         const CACHE_KEY = 'cpe_dict_cache';
@@ -237,10 +306,46 @@
             pageData.forEach(item => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
-                    <td>${highlightText(item.title)}</td>
-                    <td>${highlightText(item.vendor)}</td>
-                    <td>${highlightText(item.product)}</td>
-                    <td>${highlightText(item.filter)}</td>
+                    <td class="col-title">${highlightText(item.title)}</td>
+                    <td class="col-vendor">${highlightText(item.vendor)}</td>
+                    <td class="col-product">${highlightText(item.product)}</td>
+                    <td class="col-filter">
+                        <button class="copy-btn" onclick="copyToClipboard('${item.filter.replace(/'/g, "\\'")}')" title="Copy to clipboard">
+                            <svg xmlns="http://www.w3.org/2000/svg" height="18" viewBox="0 0 18 18" width="18">
+                                <defs>
+                                    <style>
+                                        .fill {
+                                            fill: currentColor;
+                                        }
+                                    </style>
+                                </defs>
+                                <title>Copy to Clipboard</title>
+                                <rect id="Canvas" fill="#ff13dc" opacity="0" width="18" height="18" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="16" y="11" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="16" y="9" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="16" y="7" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="16" y="5" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="16" y="3" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="16" y="1" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="14" y="1" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="12" y="1" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="10" y="1" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="8" y="1" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="6" y="1" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="6" y="3" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="6" y="5" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="6" y="7" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="6" y="9" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="6" y="11" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="8" y="11" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="10" y="11" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="12" y="11" />
+                                <rect class="fill" height="1" rx="0.25" width="1" x="14" y="11" />
+                                <path class="fill" d="M5,6H1.5a.5.5,0,0,0-.5.5v10a.5.5,0,0,0,.5.5h10a.5.5,0,0,0,.5-.5V13H5.5a.5.5,0,0,1-.5-.5Z" />
+                            </svg>
+                            ${highlightText(' ' + item.filter)}
+                        </button>
+                    </td>
                 `;
                 tableBody.appendChild(row);
             });
@@ -294,6 +399,19 @@
             if (!filter) return text;
             const regex = new RegExp(`(${filter})`, 'gi');
             return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+
+        async function copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                // Show toast
+                const toast = document.getElementById('toast');
+                toast.textContent = 'Copied to clipboard';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 1000);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
         }
 
         function debounce(func, wait) {
