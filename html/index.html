@@ -252,7 +252,6 @@
             try {
                 updateStatus('Fetching data...');
                 const decompressedData = await fetchDecompress('./cpe-product-db.json.gz', forceRefresh);
-                console.log(decompressedData);
                 data = JSON.parse(decompressedData).table;
                 updateStatus('Data loaded successfully. Last updated: ' + new Date().toLocaleString());
                 initializeTable();
