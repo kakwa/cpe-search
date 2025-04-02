@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CPE Dictionary Viewer</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+            position: sticky;
+            top: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        input, button {
+            padding: 8px;
+            font-size: 14px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+        }
+        .status {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <button onclick="fetchCSV(true)">Refresh Data</button>
+            <input type="text" id="filterInput" placeholder="Search in Vendor or Product (case insensitive)" onkeyup="filterTable()">
+        </div>
+        <div id="status" class="status"></div>
+        <table id="csvTable"></table>
+    </div>
+
+    <script>
+        const CACHE_KEY = 'cpe_dict_cache';
+        const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+
+        // Auto-load data when page loads
+        window.onload = loadData;
+
+        function updateStatus(message) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+        }
+
+        async function loadData() {
+            const cachedData = getCachedData();
+            if (cachedData) {
+                displayCSV(cachedData);
+                updateStatus('Using cached data. Last updated: ' + new Date(cachedData.timestamp).toLocaleString());
+                return;
+            }
+            await fetchCSV(false);
+        }
+
+        function getCachedData() {
+            try {
+                const cached = localStorage.getItem(CACHE_KEY);
+                if (!cached) return null;
+
+                const data = JSON.parse(cached);
+                if (Date.now() - data.timestamp > CACHE_EXPIRY) {
+                    localStorage.removeItem(CACHE_KEY);
+                    return null;
+                }
+                return data;
+            } catch (e) {
+                console.error('Error reading cache:', e);
+                return null;
+            }
+        }
+
+        function setCachedData(csvText) {
+            try {
+                const cacheData = {
+                    data: csvText,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+            } catch (e) {
+                console.error('Error setting cache:', e);
+            }
+        }
+
+        async function fetchCSV(forceRefresh = false) {
+            const url = "./cpe-product-db.csv";
+
+            try {
+                updateStatus('Fetching data...');
+                const response = await fetch(url, { 
+                    headers: { 
+                        'Cache-Control': forceRefresh ? 'no-cache' : 'default'
+                    } 
+                });
+                const csvText = await response.text();
+                
+                if (!forceRefresh) {
+                    setCachedData(csvText);
+                }
+                
+                displayCSV(csvText);
+                updateStatus('Data loaded successfully. Last updated: ' + new Date().toLocaleString());
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                alert("Failed to fetch the CSV file.");
+                updateStatus('Error loading data. Using cached data if available.');
+            }
+        }
+
+        function displayCSV(csvText) {
+            const rows = csvText.trim().split("\n").map(row => row.split("☭"));
+            if (!rows.length) return;
+
+            const table = document.getElementById("csvTable");
+            table.innerHTML = "";
+
+            // Extract Vendor and Product columns (assuming headers in first row)
+            const headers = rows[0];
+            const vendorIndex = headers.indexOf("vendor");
+            const productIndex = headers.indexOf("product");
+            if (vendorIndex === -1 || productIndex === -1) {
+                alert("CSV must contain 'vendor' and 'product' columns");
+                return;
+            }
+
+            // Create headers
+            const thead = document.createElement("thead");
+            const headerRow = document.createElement("tr");
+            ["Vendor", "Product"].forEach(header => {
+                const th = document.createElement("th");
+                th.textContent = header;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            table.appendChild(thead);
+
+            // Create body
+            const tbody = document.createElement("tbody");
+            rows.slice(1).forEach(row => {
+                const tr = document.createElement("tr");
+                [vendorIndex, productIndex].forEach(index => {
+                    const td = document.createElement("td");
+                    td.textContent = row[index] || "";
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            table.appendChild(tbody);
+        }
+
+        function filterTable() {
+            const filter = document.getElementById("filterInput").value.toLowerCase();
+            const table = document.getElementById("csvTable");
+            const rows = table.getElementsByTagName("tr");
+
+            for (let i = 1; i < rows.length; i++) { // Skip header row
+                const cells = rows[i].getElementsByTagName("td");
+                if (cells.length >= 2) {
+                    const vendorText = cells[0].textContent || cells[0].innerText;
+                    const productText = cells[1].textContent || cells[1].innerText;
+                    
+                    // Check if either vendor or product contains the filter text
+                    const matches = vendorText.toLowerCase().includes(filter) || 
+                                  productText.toLowerCase().includes(filter);
+                    
+                    rows[i].style.display = matches ? "" : "none";
+                    
+                    // Highlight matching text if there's a filter
+                    if (filter) {
+                        cells[0].innerHTML = highlightText(vendorText, filter);
+                        cells[1].innerHTML = highlightText(productText, filter);
+                    } else {
+                        cells[0].textContent = vendorText;
+                        cells[1].textContent = productText;
+                    }
+                }
+            }
+        }
+
+        function highlightText(text, filter) {
+            if (!filter) return text;
+            const regex = new RegExp(`(${filter})`, 'gi');
+            return text.replace(regex, '<span class="highlight">$1</span>');
+        }
+    </script>
+</body>
+</html>
