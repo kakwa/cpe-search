@@ -35,7 +35,6 @@ if [ ! -f "$CPE_XML" ]; then
   exit 1
 fi
 
-CPE_XML=official-cpe-dictionary_v2.3.xml
 # Process with XSLT
 echo "Transforming to CSV..."
 java -jar /usr/share/java/Saxon-HE-*.jar -s:$CPE_XML -xsl:$XSLT_FILE -o:$OUTPUT_CSV
