@@ -3,13 +3,15 @@
 [![CPE DB Update](https://github.com/kakwa/cpe-search/actions/workflows/publish.yml/badge.svg)](https://github.com/kakwa/cpe-search/actions/workflows/publish.yml)
 
 
-Live DB: [https://kakwa.github.io/cpe-search/](https://kakwa.github.io/cpe-search/)
+Common Platform Enumeration search tool: [https://kakwa.github.io/cpe-search/](https://kakwa.github.io/cpe-search/)
 
-Web interface to search and browse the CPE (Common Platform Enumeration) product database and easily find CPE filters.
+This project is a basic web interface to search and browse the CPE (Common Platform Enumeration) database and easily find CPE filters.
 
-CPE DB is updated daily.
+The CPE Database is updated daily.
 
 ## Self-Hosting
+
+If you want to self-host the DB:
 
 Install dependencies:
 
@@ -26,7 +28,7 @@ ls html/
 cpe-product-db.csv.gz  cpe-product-db.json.gz  favicon.ico  index.html
 ```
 
-Testing it (in production, use `nginx` for example):
+Testing it:
 ```shell
 cd html/
 # Using Python's built-in server
@@ -34,3 +36,6 @@ python3 -m http.server 8000
 ```
 
 Then visit 127.0.0.1:8080 with your browser.
+
+Use servers like `apache` or `nginx` to serve the content of `html/` in production.
+I
