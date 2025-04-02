@@ -2,7 +2,7 @@ name: Documentation
 
 on:
   schedule:
-    - cron: '21 39 * * *'  # Runs every day at midnight UTC
+    - cron: '48 21 * * *'  # Runs every day at 21:48 UTC
   push:
     branches: [ main ]
   # Allow manual trigger
