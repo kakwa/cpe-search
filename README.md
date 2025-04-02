@@ -1,5 +1,8 @@
 # CPE Product Database Search
 
+[![CPE DB Update](https://github.com/kakwa/cpe-search/actions/workflows/publish.yml/badge.svg)](https://github.com/kakwa/cpe-search/actions/workflows/publish.yml)
+
+
 Live DB: [https://kakwa.github.io/cpe-search/](https://kakwa.github.io/cpe-search/)
 
 Web interface to search and browse the CPE (Common Platform Enumeration) product database and easily find CPE filters.
