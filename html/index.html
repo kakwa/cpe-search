@@ -181,7 +181,7 @@
         let data = [];
         let filteredData = [];
         let currentPage = 1;
-        let pageSize = 50;
+        let pageSize = 16;
         let totalPages = 1;
 
         // Auto-load data when page loads
@@ -197,20 +197,22 @@
         const fetchDecompress = async (url, forceRefresh = false) => {
             showLoading(true);
             const cachedData = getCachedData();
-            let decompressedData;
+            let response;
 
-            if (cachedData && !forceRefresh) {
-                decompressedData = cachedData.data;
+            if (cachedData && cachedData.data && !forceRefresh) {
+                response = cachedData.data;
                 updateStatus('Using cached data. Last updated: ' + new Date(cachedData.timestamp).toLocaleString());
                 showLoading(false);
-                return decompressedData;
+            } else {
+                console.log("fetching data");
+                response = await fetch(url);
             }
 
             try {
-                const response = await fetch(url);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
+                setCachedData(response);
 
                 const ds = new DecompressionStream('gzip');
                 const reader = response.body.getReader();
@@ -237,7 +239,6 @@
                 decompressedData = await decompressedResponse.text();
 
                 // Cache the decompressed data
-                setCachedData(decompressedData);
 
                 return decompressedData;
             } catch (error) {
@@ -281,7 +282,7 @@
                     data: data,
                     timestamp: Date.now()
                 };
-                localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+                localStorage.setItem(CACHE_KEY, cacheData);
             } catch (e) {
                 console.error('Error setting cache:', e);
             }
