@@ -12,7 +12,7 @@
   <!-- Add header row for CSV -->
   <xsl:template match="/">
     <xsl:message>Debug: Processing root element</xsl:message>
-    <xsl:text>title☭vendor☭product☭cpe&#xa;</xsl:text>
+    <!--<xsl:text>title☭vendor☭product☭cpe&#xa;</xsl:text> -->
     <!-- Apply templates to unique vendor+product combinations -->
     <xsl:for-each-group select="//cpe:cpe-item" group-by="concat(tokenize(cpe-23:cpe23-item/@name, ':')[4], '|', tokenize(cpe-23:cpe23-item/@name, ':')[5])">
       <xsl:apply-templates select="."/>
