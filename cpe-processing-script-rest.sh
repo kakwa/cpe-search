@@ -14,7 +14,7 @@ fetch_cpe_data() {
     local start_index=$1
     local results_per_page=$2
     local output_file=$3
-    
+
     HEADERS=""
     if [ -n "$API_KEY" ]; then
         HEADERS="-H apiKey:${API_KEY}"
@@ -26,13 +26,36 @@ fetch_cpe_data() {
     done
 }
 
-# Function to process JSON data
+# Function to process JSON data and format output
 process_json() {
     local input_file=$1
     local output_file=$2
-    
-    # Extract relevant fields and format as CSV
-    jq -r '.products[] | [.cpe.cpeName, .cpe.titles[0].title, .cpe.cpeNameId] | @csv' "$input_file" > "$output_file"
+    local last_line=""
+
+    # Extract and format data
+    jq -r '.products[] | [.cpe.cpeName, .cpe.titles[0].title] | @tsv' "$input_file" | while IFS=$'\t' read -r cpe title; do
+        # Extract vendor and product from CPE
+        if [[ $cpe =~ (cpe:2\.3:[a-z]):([^:]+):([^:]+):([^:]+): ]]; then
+            prefix="${BASH_REMATCH[1]}"
+            vendor="${BASH_REMATCH[2]}"
+            product="${BASH_REMATCH[3]}"
+            version="${BASH_REMATCH[4]}"
+
+            # Create simplified CPE with wildcard
+            simple_cpe="${prefix}:${vendor}:${product}:*"
+
+
+            generic_title=$(echo ${title} | sed "s/ *[0-9]\\+\.[0-9]\\+[.0-9]* *//")
+            # Create output line
+            line="${generic_title}☭${vendor}☭${product}☭${simple_cpe}"
+
+            # Skip if duplicate
+            if [ "${vendor}☭${product}" != "$last_line" ]; then
+                echo "$line" >> "$output_file"
+                last_line="${vendor}☭${product}"
+            fi
+        fi
+    done
 }
 
 # Main processing
@@ -46,13 +69,13 @@ echo "Total results: $total_results"
 # Process data in chunks
 while [ $START_INDEX -lt $total_results ]; do
     echo "Processing results $START_INDEX to $((START_INDEX + RESULTS_PER_PAGE))..."
-    
+
     # Fetch chunk of data
     fetch_cpe_data $START_INDEX $RESULTS_PER_PAGE "$TEMP_DIR/chunk_$START_INDEX.json"
-    
+
     # Process chunk
     process_json "$TEMP_DIR/chunk_$START_INDEX.json" "$TEMP_DIR/chunk_$START_INDEX.csv"
-    
+
     START_INDEX=$((START_INDEX + RESULTS_PER_PAGE))
 done
 
@@ -60,17 +83,18 @@ done
 echo "Combining results..."
 cat "$TEMP_DIR"/chunk_*.csv > "$TEMP_DIR/combined.csv"
 
+
 # Create final JSON file
 echo "Creating JSON output..."
-jq -s -R 'split("\n") | map(select(length > 0)) | map(fromcsv) | map({"cpe": .[0], "title": .[1], "id": .[2]}) | {"table": .}' "$TEMP_DIR/combined.csv" > "$OUTPUT_DIR/cpe-product-db.json"
+jq -s -R 'split("\n") | map(select(length > 0)) | map(split("☭")) | map({"title": .[0], "vendor": .[1], "product": .[2], "filter": .[3]}) | {"table": .}' "$TEMP_DIR/combined.csv" > "$OUTPUT_DIR/cpe-product-db.json"
 
 # Compress files
 echo "Compressing files..."
-gzip -9 "$OUTPUT_DIR/cpe-product-db.json"
-gzip -9 "$TEMP_DIR/combined.csv" && mv "$TEMP_DIR/combined.csv.gz" "$OUTPUT_DIR/cpe-product-db.csv.gz"
+gzip -f -9 "$OUTPUT_DIR/cpe-product-db.json"
+gzip -f -9 "$TEMP_DIR/combined.csv" && mv "$TEMP_DIR/combined.csv.gz" "$OUTPUT_DIR/cpe-product-db.csv.gz"
 
 # Cleanup
 echo "Cleaning up..."
 rm -rf "$TEMP_DIR"
 
-echo "Done! Output files in $OUTPUT_DIR/" 
+echo "Done! Output files in $OUTPUT_DIR/"
