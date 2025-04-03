@@ -39,7 +39,7 @@ cd html/
 python3 -m http.server 8000
 ```
 
-Then visit 127.0.0.1:8000 with your browser.
+Then visit http://127.0.0.1:8000 with your browser.
 
 Use servers like `apache` or `nginx` to serve the content of `html/` in production.
 I
