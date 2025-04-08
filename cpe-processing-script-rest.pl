@@ -11,6 +11,8 @@ use POSIX qw(strftime);
 use IO::Compress::Gzip qw(gzip);
 use Encode qw(encode decode);
 use open ':std', ':encoding(UTF-8)';
+use Text::CSV;
+use Text::CSV::Encoded;
 
 # Configuration
 my $RESULTS_PER_PAGE = 10000;
@@ -18,6 +20,13 @@ my $START_INDEX = 0;
 my $OUTPUT_DIR = "html";
 my $TEMP_DIR = tempdir("cpe-rest.XXXXXX", CLEANUP => 1);
 my $DELIMITER = "\t";  # Using tab as delimiter instead of special character
+
+# Create CSV object
+my $csv = Text::CSV::Encoded->new ({
+    binary    => 1,
+    encoding_out  => 'UTF-8',
+    sep_char  => ",",
+}) or die "Cannot use CSV: " . Text::CSV->error_diag();
 
 # Set up signal handlers
 $SIG{INT} = $SIG{TERM} = sub {
@@ -30,19 +39,17 @@ make_path($OUTPUT_DIR);
 
 # Function to fetch data from NVD API
 sub fetch_cpe_data {
-    my ($start_index, $results_per_page, $output_file) = @_;
+    my ($start_index, $results_per_page) = @_;
     my $ua = LWP::UserAgent->new;
-    
+
     my $url = "https://services.nvd.nist.gov/rest/json/cpes/2.0?resultsPerPage=$results_per_page&startIndex=$start_index";
     my $headers = {};
     $headers->{'apiKey'} = $ENV{API_KEY} if $ENV{API_KEY};
-    
+
     while (1) {
         my $response = $ua->get($url, %$headers);
         if ($response->is_success) {
-            open(my $fh, '>', $output_file) or die "Cannot open $output_file: $!";
-            print $fh $response->content;
-            close($fh);
+            return $response->content;
             last;
         } else {
             print "Failed to fetch data, retrying...\n";
@@ -53,47 +60,45 @@ sub fetch_cpe_data {
 
 # Function to process JSON data and format output
 sub process_json {
-    my ($input_file, $output_file) = @_;
+    my ($json_text, $output_file) = @_;
     my $last_line = "";
-    
-    open(my $in_fh, '<:encoding(UTF-8)', $input_file) or die "Cannot open $input_file: $!";
-    open(my $out_fh, '>>:encoding(UTF-8)', $output_file) or die "Cannot open $output_file: $!";
-    
-    my $json_text = do { local $/; <$in_fh> };
+
+    open(my $out_fh, '>', $output_file) or die "Cannot open $output_file: $!";
+
     my $json = decode_json($json_text);
-    
+
     foreach my $product (@{$json->{products}}) {
         my $cpe = $product->{cpe}->{cpeName};
         my $title = "";
         foreach my $t (@{$product->{cpe}->{titles}}) {
             $title = $t->{title} if $t->{lang} eq "en";
         }
-        
+
         print "Processing CPE: $cpe\n";
-        
+
         if ($cpe =~ /^cpe:([0-9.]+):([a-z]):([^:]+):([^:]+):([^:]+):/) {
             my ($cpe_version, $part, $vendor, $product, $version) = ($1, $2, $3, $4, $5);
-            
+
             if ($cpe_version && $part && $vendor && $product) {
                 my $simple_cpe = "cpe:$cpe_version:$part:$vendor:$product:*";
                 my $generic_title = $title;
-                
+
                 if ($version && $version ne '-') {
                     $version =~ s/\\//g;
                     $generic_title =~ s/\s*\Q$version\E\s*/ /g;
+                    $generic_title =~ s/\s+$//;
                 }
-                
-                my $line = "$vendor$DELIMITER$product$DELIMITER$simple_cpe$DELIMITER$generic_title";
-                
-                if ("$vendor$DELIMITER$product" ne $last_line) {
-                    print $out_fh "$line\n";
-                    $last_line = "$vendor$DELIMITER$product";
+
+                my $key = lc("$vendor\t$product");
+                if ($key ne $last_line) {
+                    $csv->print($out_fh, [$vendor, $product, $simple_cpe, $generic_title]);
+                    print $out_fh "\n";
+                    $last_line = $key;
                 }
             }
         }
     }
-    
-    close($in_fh);
+
     close($out_fh);
 }
 
@@ -101,23 +106,20 @@ sub process_json {
 print "Fetching CPE data from NVD API...\n";
 
 # Fetch initial data to get total count
-fetch_cpe_data(0, 1, "$TEMP_DIR/initial.json");
-open(my $init_fh, '<', "$TEMP_DIR/initial.json") or die "Cannot open initial.json: $!";
-my $init_json = decode_json(do { local $/; <$init_fh> });
-close($init_fh);
+my $init_json = decode_json(fetch_cpe_data(0, 1));
 my $total_results = $init_json->{totalResults};
 print "Total results: $total_results\n";
 
 # Process data in chunks
 while ($START_INDEX < $total_results) {
     print "Processing results $START_INDEX to " . ($START_INDEX + $RESULTS_PER_PAGE) . "...\n";
-    
+
     # Fetch chunk of data
-    fetch_cpe_data($START_INDEX, $RESULTS_PER_PAGE, "$TEMP_DIR/chunk_$START_INDEX.json");
-    
+    my $data = fetch_cpe_data($START_INDEX, $RESULTS_PER_PAGE);
+
     # Process chunk
-    process_json("$TEMP_DIR/chunk_$START_INDEX.json", "$TEMP_DIR/chunk_$START_INDEX.csv");
-    
+    process_json($data, "$TEMP_DIR/chunk_$START_INDEX.csv");
+
     $START_INDEX += $RESULTS_PER_PAGE;
 }
 
@@ -131,27 +133,26 @@ sub combine_csv_chunks {
     # Read and collect all lines from chunk_*.csv
     foreach my $file (bsd_glob("$temp_dir/chunk_*.csv")) {
         open my $fh, '<:encoding(UTF-8)', $file or die "Cannot open $file: $!";
-        while (my $line = <$fh>) {
-            chomp $line;
-            my ($vendor, $product) = split(/\Q$DELIMITER\E/, $line, 3);  # Split only first two columns
-            
-            # Create a key for deduplication
-            my $key = lc("$vendor$DELIMITER$product");  # Case-insensitive comparison
-            
+        while (my $row = $csv->getline($fh)) {
+            my ($vendor, $product) = @$row;
+            my $key = lc("$vendor\t$product");  # Case-insensitive comparison
+
             unless ($seen{$key}++) {
-                push @lines, $line;
+                push @lines, $row;
             }
         }
         close $fh;
     }
 
     # Sort the unique lines
-    @lines = sort @lines;
+    @lines = sort {
+        lc("$a->[0]\t$a->[1]") cmp lc("$b->[0]\t$b->[1]")
+    } @lines;
 
     # Write to output file
     my $output_path = File::Spec->catfile($temp_dir, $output_filename);
     open my $out, '>:encoding(UTF-8)', $output_path or die "Cannot write to $output_path: $!";
-    print $out "$_\n" for @lines;
+    $csv->print($out, $_) for @lines;
     close $out;
 
     return $output_path;
@@ -164,13 +165,9 @@ my $result_path = combine_csv_chunks($TEMP_DIR);
 # Create final JSON file
 print "Creating JSON output...\n";
 open(my $csv_fh, '<:encoding(UTF-8)', "$TEMP_DIR/combined.csv") or die "Cannot open combined.csv: $!";
-my @lines = grep { length } <$csv_fh>;
-close($csv_fh);
-
 my @entries;
-foreach my $line (@lines) {
-    chomp $line;
-    my ($vendor, $product, $filter, $title) = split(/\Q$DELIMITER\E/, $line);
+while (my $row = $csv->getline($csv_fh)) {
+    my ($vendor, $product, $filter, $title) = @$row;
     push @entries, {
         title => $title,
         vendor => $vendor,
@@ -178,6 +175,7 @@ foreach my $line (@lines) {
         filter => $filter
     };
 }
+close($csv_fh);
 
 open(my $json_fh, '>:encoding(UTF-8)', "$OUTPUT_DIR/cpe-product-db.json") or die "Cannot open cpe-product-db.json: $!";
 print $json_fh encode_json({ table => \@entries });
@@ -188,4 +186,4 @@ print "Compressing files...\n";
 gzip "$OUTPUT_DIR/cpe-product-db.json" => "$OUTPUT_DIR/cpe-product-db.json.gz";
 gzip "$TEMP_DIR/combined.csv" => "$OUTPUT_DIR/cpe-product-db.csv.gz";
 
-print "Done! Output files in $OUTPUT_DIR/\n"; 
+print "Done! Output files in $OUTPUT_DIR/\n";

@@ -20,7 +20,7 @@ If you want to self-host the DB:
 
 Install dependencies:
 ```
-sudo apt install libwww-perl
+sudo apt install libwww-perl libtext-csv-perl libtext-csv-encoded-perl
 ```
 
 Build the DB csv & json DB:
