@@ -20,12 +20,9 @@ If you want to self-host the DB:
 
 Install dependencies:
 
-```shell
-sudo apt install curl jq
-```
 Build the DB csv & json DB:
 ```shell
-./cpe-processing-script-rest.sh
+./cpe-processing-script-rest.pl
 
 # Result directory
 ls html/ 

@@ -33,7 +33,7 @@ jobs:
         run: sudo apt install -y libsaxonhe-java jq curl
 
       - name: Build documentation
-        run: API_KEY=${{ secrets.API_KEY }} ./cpe-processing-script-rest.sh
+        run: API_KEY=${{ secrets.API_KEY }} ./cpe-processing-script-rest.pl
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
