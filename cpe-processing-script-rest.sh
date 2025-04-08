@@ -12,7 +12,7 @@ cleanup() {
     rm -rf -- "$TEMP_DIR"
     kill -9 $$
 }
-trap cleanup EXIT INT TERM
+trap cleanup INT TERM
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
@@ -41,18 +41,25 @@ process_json() {
     last_line=""
 
     # Extract and format data
-    jq -r '.products[] | [.cpe.cpeName, .cpe.titles[0].title] | @tsv' "$input_file" | while IFS=$(printf '\t') read -r cpe title; do
+    jq -r '.products[] | [.cpe.cpeName, (.cpe.titles[] | select(.lang == "en") | .title)] | @tsv' "$input_file" | while IFS=$(printf '\t') read -r cpe title; do
         # Extract vendor and product from CPE
-        prefix=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\1/p')
-        vendor=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\2/p')
-        product=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\3/p')
-        version=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\4/p')
+        REGEXP='cpe:\([0-9.]*\):\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*'
+        cpe_version=$(echo "$cpe"  | sed -n "s/$REGEXP/\1/p")
+        part=$(echo "$cpe"         | sed -n "s/$REGEXP/\2/p")
+        vendor=$(echo "$cpe"       | sed -n "s/$REGEXP/\3/p")
+        product=$(echo "$cpe"      | sed -n "s/$REGEXP/\4/p")
+        version=$(echo "$cpe"      | sed -n "s/$REGEXP/\5/p")
 
-        if [ -n "$prefix" ] && [ -n "$vendor" ] && [ -n "$product" ]; then
+        if [ -n "$cpe_version" ] && [ -n "$part" ] && [ -n "$vendor" ] && [ -n "$product" ]; then
             # Create simplified CPE with wildcard
-            simple_cpe="${prefix}:${vendor}:${product}:*"
+            simple_cpe="cpe:${cpe_version}:${part}:${vendor}:${product}:*"
 
-            generic_title=$(echo "$title" | sed "s/ *${version} *//")
+            if [ -z "$version" ] || [ "$version" = '-' ]
+            then
+                generic_title="$title"
+            else
+                generic_title=$(echo "$title" | sed "s/ *${version} *//")
+            fi
             # Create output line
             line="${vendor}☭${product}☭${simple_cpe}☭${generic_title}"
 
@@ -99,5 +106,8 @@ echo "Compressing files..."
 gzip -f -9 "$OUTPUT_DIR/cpe-product-db.json"
 gzip -f -9 "$TEMP_DIR/combined.csv" && mv "$TEMP_DIR/combined.csv.gz" "$OUTPUT_DIR/cpe-product-db.csv.gz"
 
+
+echo "Cleaning up temporary files..."
+rm -rf -- "$TEMP_DIR"
 
 echo "Done! Output files in $OUTPUT_DIR/"
