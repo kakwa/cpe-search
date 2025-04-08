@@ -21,11 +21,11 @@ If you want to self-host the DB:
 Install dependencies:
 
 ```shell
-sudo apt install libsaxonhe-java
+sudo apt install curl jq
 ```
 Build the DB csv & json DB:
 ```shell
-./cpe-processing-script.sh
+./cpe-processing-script-rest.sh
 
 # Result directory
 ls html/ 
@@ -42,4 +42,3 @@ python3 -m http.server 8000
 Then visit http://127.0.0.1:8000 with your browser.
 
 Use servers like `apache` or `nginx` to serve the content of `html/` in production.
-I
