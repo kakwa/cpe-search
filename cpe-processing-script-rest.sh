@@ -42,6 +42,7 @@ process_json() {
 
     # Extract and format data
     jq -r '.products[] | [.cpe.cpeName, (.cpe.titles[] | select(.lang == "en") | .title)] | @tsv' "$input_file" | while IFS=$(printf '\t') read -r cpe title; do
+        echo "Processing CPE: $cpe"
         # Extract vendor and product from CPE
         REGEXP='cpe:\([0-9.]*\):\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*'
         cpe_version=$(echo "$cpe"  | sed -n "s/$REGEXP/\1/p")
@@ -58,7 +59,7 @@ process_json() {
             then
                 generic_title="$title"
             else
-                generic_title=$(echo "$title" | sed "s/ *${version} *//")
+                generic_title=$(echo "$title" | awk -v v="$(echo $version | sed 's|\\||g')" '{gsub(" *"v" *", " "); print}')
             fi
             # Create output line
             line="${vendor}☭${product}☭${simple_cpe}☭${generic_title}"
