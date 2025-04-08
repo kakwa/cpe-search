@@ -30,10 +30,10 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: sudo apt install -y libsaxonhe-java
+        run: sudo apt install -y libsaxonhe-java jq curl
 
       - name: Build documentation
-        run: ./cpe-processing-script.sh
+        run: API_KEY=${{ secrets.API_KEY }} ./cpe-processing-script-rest.sh
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
