@@ -147,11 +147,11 @@
 <body>
     <div class="container">
         <div class="controls">
-            <button onclick="loadData(true)">Refresh Data</button>
             <input type="text" id="filterInput" placeholder="Search in Vendor or Product" onkeyup="debouncedFilter()">
             <select id="pageSize" onchange="changePageSize()">
+                <option value="auto">Auto (fit screen)</option>
                 <option value="8">8 per page</option>
-                <option value="16" selected>16 per page</option>
+                <option value="16">16 per page</option>
                 <option value="33">33 per page</option>
                 <option value="66">66 per page</option>
                 <option value="100">100 per page</option>
@@ -188,11 +188,29 @@
         let data = [];
         let filteredData = [];
         let currentPage = 1;
-        let pageSize = 16;
+        let pageSize = calculatePageSize();
         let totalPages = 1;
 
         // Auto-load data when page loads
-        window.onload = () => loadData(false);
+        window.onload = () => {
+            loadData(false);
+            // Update page size when window is resized
+            window.addEventListener('resize', () => {
+                const newPageSize = calculatePageSize();
+                if (newPageSize !== pageSize) {
+                    pageSize = newPageSize;
+                    updatePagination();
+                    renderTable();
+                }
+            });
+        };
+
+        function calculatePageSize() {
+            const tableContainer = document.querySelector('.table-container');
+            const rowHeight = 40; // Approximate height of a row in pixels
+            const availableHeight = window.innerHeight - tableContainer.offsetTop - 120; // Subtract header and pagination space
+            return Math.max(1, Math.floor(availableHeight / rowHeight));
+        }
 
         function updateStatus(message) {
             document.getElementById('status').textContent = message;
@@ -381,7 +399,12 @@
         }
 
         function changePageSize() {
-            pageSize = parseInt(document.getElementById('pageSize').value);
+            const selectedValue = document.getElementById('pageSize').value;
+            if (selectedValue === 'auto') {
+                pageSize = calculatePageSize();
+            } else {
+                pageSize = parseInt(selectedValue);
+            }
             currentPage = 1;
             updatePagination();
             renderTable();
