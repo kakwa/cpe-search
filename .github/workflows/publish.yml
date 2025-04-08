@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install dependencies
-        run: sudo apt install -y libsaxonhe-java jq curl libwww-perl
+        run: sudo apt install -y libwww-perl
 
       - name: Build documentation
         run: API_KEY=${{ secrets.API_KEY }} ./cpe-processing-script-rest.pl
