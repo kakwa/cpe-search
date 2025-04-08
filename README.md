@@ -19,6 +19,9 @@ The CPE Database is updated daily.
 If you want to self-host the DB:
 
 Install dependencies:
+```
+sudo apt install libwww-perl
+```
 
 Build the DB csv & json DB:
 ```shell
