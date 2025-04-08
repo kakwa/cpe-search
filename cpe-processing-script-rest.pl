@@ -9,12 +9,15 @@ use File::Glob ':glob';
 use File::Spec;
 use POSIX qw(strftime);
 use IO::Compress::Gzip qw(gzip);
+use Encode qw(encode decode);
+use open ':std', ':encoding(UTF-8)';
 
 # Configuration
 my $RESULTS_PER_PAGE = 10000;
 my $START_INDEX = 0;
 my $OUTPUT_DIR = "html";
 my $TEMP_DIR = tempdir("cpe-rest.XXXXXX", CLEANUP => 1);
+my $DELIMITER = "\t";  # Using tab as delimiter instead of special character
 
 # Set up signal handlers
 $SIG{INT} = $SIG{TERM} = sub {
@@ -53,8 +56,8 @@ sub process_json {
     my ($input_file, $output_file) = @_;
     my $last_line = "";
     
-    open(my $in_fh, '<', $input_file) or die "Cannot open $input_file: $!";
-    open(my $out_fh, '>>', $output_file) or die "Cannot open $output_file: $!";
+    open(my $in_fh, '<:encoding(UTF-8)', $input_file) or die "Cannot open $input_file: $!";
+    open(my $out_fh, '>>:encoding(UTF-8)', $output_file) or die "Cannot open $output_file: $!";
     
     my $json_text = do { local $/; <$in_fh> };
     my $json = decode_json($json_text);
@@ -80,11 +83,11 @@ sub process_json {
                     $generic_title =~ s/\s*\Q$version\E\s*/ /g;
                 }
                 
-                my $line = "$vendor☭$product☭$simple_cpe☭$generic_title";
+                my $line = "$vendor$DELIMITER$product$DELIMITER$simple_cpe$DELIMITER$generic_title";
                 
-                if ("$vendor☭$product" ne $last_line) {
+                if ("$vendor$DELIMITER$product" ne $last_line) {
                     print $out_fh "$line\n";
-                    $last_line = "$vendor☭$product";
+                    $last_line = "$vendor$DELIMITER$product";
                 }
             }
         }
@@ -120,14 +123,14 @@ while ($START_INDEX < $total_results) {
 
 sub combine_csv_chunks {
     my ($temp_dir, $output_filename) = @_;
-    $output_filename ||= 'combined.csv';  # default output name if not provided
+    $output_filename ||= 'combined.csv';
 
     my %seen;
     my @lines;
 
     # Read and collect all lines from chunk_*.csv
     foreach my $file (bsd_glob("$temp_dir/chunk_*.csv")) {
-        open my $fh, '<', $file or die "Cannot open $file: $!";
+        open my $fh, '<:encoding(UTF-8)', $file or die "Cannot open $file: $!";
         while (my $line = <$fh>) {
             chomp $line;
             unless ($seen{$line}++) {
@@ -142,7 +145,7 @@ sub combine_csv_chunks {
 
     # Write to output file
     my $output_path = File::Spec->catfile($temp_dir, $output_filename);
-    open my $out, '>', $output_path or die "Cannot write to $output_path: $!";
+    open my $out, '>:encoding(UTF-8)', $output_path or die "Cannot write to $output_path: $!";
     print $out "$_\n" for @lines;
     close $out;
 
@@ -155,14 +158,14 @@ my $result_path = combine_csv_chunks($TEMP_DIR);
 
 # Create final JSON file
 print "Creating JSON output...\n";
-open(my $csv_fh, '<', "$TEMP_DIR/combined.csv") or die "Cannot open combined.csv: $!";
+open(my $csv_fh, '<:encoding(UTF-8)', "$TEMP_DIR/combined.csv") or die "Cannot open combined.csv: $!";
 my @lines = grep { length } <$csv_fh>;
 close($csv_fh);
 
 my @entries;
 foreach my $line (@lines) {
     chomp $line;
-    my ($vendor, $product, $filter, $title) = split('☭', $line);
+    my ($vendor, $product, $filter, $title) = split(/\Q$DELIMITER\E/, $line);
     push @entries, {
         title => $title,
         vendor => $vendor,
@@ -171,7 +174,7 @@ foreach my $line (@lines) {
     };
 }
 
-open(my $json_fh, '>', "$OUTPUT_DIR/cpe-product-db.json") or die "Cannot open cpe-product-db.json: $!";
+open(my $json_fh, '>:encoding(UTF-8)', "$OUTPUT_DIR/cpe-product-db.json") or die "Cannot open cpe-product-db.json: $!";
 print $json_fh encode_json({ table => \@entries });
 close($json_fh);
 
