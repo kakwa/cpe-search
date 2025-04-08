@@ -4,7 +4,15 @@
 RESULTS_PER_PAGE=10000
 START_INDEX=0
 OUTPUT_DIR="html"
-TEMP_DIR=$(mktemp -d)
+TEMP_DIR=$(mktemp -d  --suffix=.cpe-rest)
+
+# Set up trap to clean up on exit
+cleanup() {
+    echo "Cleaning up temporary files..."
+    rm -rf -- "$TEMP_DIR"
+    kill -9 $$
+}
+trap cleanup EXIT INT TERM
 
 # Create output directory if it doesn't exist
 mkdir -p "$OUTPUT_DIR"
@@ -44,7 +52,7 @@ process_json() {
             # Create simplified CPE with wildcard
             simple_cpe="${prefix}:${vendor}:${product}:*"
 
-            generic_title=$(echo "$title" | sed "s/ *[0-9]\\+\.[0-9]\\+[.0-9]* *//")
+            generic_title=$(echo "$title" | sed "s/ *${version} *//")
             # Create output line
             line="${vendor}☭${product}☭${simple_cpe}☭${generic_title}"
 
@@ -80,7 +88,7 @@ done
 
 # Combine all CSV files
 echo "Combining results..."
-cat "$TEMP_DIR"/chunk_*.csv | sort > "$TEMP_DIR/combined.csv"
+cat "$TEMP_DIR"/chunk_*.csv | sort | uniq > "$TEMP_DIR/combined.csv"
 
 # Create final JSON file
 echo "Creating JSON output..."
@@ -91,8 +99,5 @@ echo "Compressing files..."
 gzip -f -9 "$OUTPUT_DIR/cpe-product-db.json"
 gzip -f -9 "$TEMP_DIR/combined.csv" && mv "$TEMP_DIR/combined.csv.gz" "$OUTPUT_DIR/cpe-product-db.csv.gz"
 
-# Cleanup
-echo "Cleaning up..."
-rm -rf "$TEMP_DIR"
 
 echo "Done! Output files in $OUTPUT_DIR/"
