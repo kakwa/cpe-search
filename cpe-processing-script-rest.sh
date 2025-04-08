@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Configuration
 RESULTS_PER_PAGE=10000
@@ -11,9 +11,9 @@ mkdir -p "$OUTPUT_DIR"
 
 # Function to fetch data from NVD API
 fetch_cpe_data() {
-    local start_index=$1
-    local results_per_page=$2
-    local output_file=$3
+    start_index=$1
+    results_per_page=$2
+    output_file=$3
 
     HEADERS=""
     if [ -n "$API_KEY" ]; then
@@ -28,26 +28,25 @@ fetch_cpe_data() {
 
 # Function to process JSON data and format output
 process_json() {
-    local input_file=$1
-    local output_file=$2
-    local last_line=""
+    input_file=$1
+    output_file=$2
+    last_line=""
 
     # Extract and format data
-    jq -r '.products[] | [.cpe.cpeName, .cpe.titles[0].title] | @tsv' "$input_file" | while IFS=$'\t' read -r cpe title; do
+    jq -r '.products[] | [.cpe.cpeName, .cpe.titles[0].title] | @tsv' "$input_file" | while IFS=$(printf '\t') read -r cpe title; do
         # Extract vendor and product from CPE
-        if [[ $cpe =~ (cpe:2\.3:[a-z]):([^:]+):([^:]+):([^:]+): ]]; then
-            prefix="${BASH_REMATCH[1]}"
-            vendor="${BASH_REMATCH[2]}"
-            product="${BASH_REMATCH[3]}"
-            version="${BASH_REMATCH[4]}"
+        prefix=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\1/p')
+        vendor=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\2/p')
+        product=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\3/p')
+        version=$(echo "$cpe" | sed -n 's/cpe:2\.3:\([a-z]\):\([^:]*\):\([^:]*\):\([^:]*\):.*/\4/p')
 
+        if [ -n "$prefix" ] && [ -n "$vendor" ] && [ -n "$product" ]; then
             # Create simplified CPE with wildcard
             simple_cpe="${prefix}:${vendor}:${product}:*"
 
-
-            generic_title=$(echo ${title} | sed "s/ *[0-9]\\+\.[0-9]\\+[.0-9]* *//")
+            generic_title=$(echo "$title" | sed "s/ *[0-9]\\+\.[0-9]\\+[.0-9]* *//")
             # Create output line
-            line="${generic_title}☭${vendor}☭${product}☭${simple_cpe}"
+            line="${vendor}☭${product}☭${simple_cpe}☭${generic_title}"
 
             # Skip if duplicate
             if [ "${vendor}☭${product}" != "$last_line" ]; then
@@ -81,12 +80,11 @@ done
 
 # Combine all CSV files
 echo "Combining results..."
-cat "$TEMP_DIR"/chunk_*.csv > "$TEMP_DIR/combined.csv"
-
+cat "$TEMP_DIR"/chunk_*.csv | sort > "$TEMP_DIR/combined.csv"
 
 # Create final JSON file
 echo "Creating JSON output..."
-jq -s -R 'split("\n") | map(select(length > 0)) | map(split("☭")) | map({"title": .[0], "vendor": .[1], "product": .[2], "filter": .[3]}) | {"table": .}' "$TEMP_DIR/combined.csv" > "$OUTPUT_DIR/cpe-product-db.json"
+jq -s -R 'split("\n") | map(select(length > 0)) | map(split("☭")) | map({"title": .[3], "vendor": .[0], "product": .[1], "filter": .[2]}) | {"table": .}' "$TEMP_DIR/combined.csv" > "$OUTPUT_DIR/cpe-product-db.json"
 
 # Compress files
 echo "Compressing files..."
