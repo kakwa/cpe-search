@@ -9,9 +9,6 @@ use File::Glob ':glob';
 use File::Spec;
 use POSIX qw(strftime);
 use IO::Compress::Gzip qw(gzip);
-use Encode qw(encode decode);
-use open ':std', ':encoding(UTF-8)';
-use Text::CSV;
 use Text::CSV::Encoded;
 
 # Configuration
@@ -19,14 +16,18 @@ my $RESULTS_PER_PAGE = 10000;
 my $START_INDEX = 0;
 my $OUTPUT_DIR = "html";
 my $TEMP_DIR = tempdir("cpe-rest.XXXXXX", CLEANUP => 1);
-my $DELIMITER = "\t";  # Using tab as delimiter instead of special character
 
 # Create CSV object
 my $csv = Text::CSV::Encoded->new ({
-    binary    => 1,
-    encoding_out  => 'UTF-8',
+    encoding => 'utf-8',
+    encoding_in => 'utf-8',
+    encoding_out => 'utf-8',
+    eol => "\n",
+    binary   => 1,
+    auto_diag => 1,
     sep_char  => ",",
-}) or die "Cannot use CSV: " . Text::CSV->error_diag();
+}) or die "Cannot use CSV: " . Text::CSV::Encoded->error_diag();
+$csv->encoding("utf-8");
 
 # Set up signal handlers
 $SIG{INT} = $SIG{TERM} = sub {
@@ -92,7 +93,6 @@ sub process_json {
                 my $key = lc("$vendor\t$product");
                 if ($key ne $last_line) {
                     $csv->print($out_fh, [$vendor, $product, $simple_cpe, $generic_title]);
-                    print $out_fh "\n";
                     $last_line = $key;
                 }
             }
@@ -131,11 +131,12 @@ sub combine_csv_chunks {
     my @lines;
 
     # Read and collect all lines from chunk_*.csv
+    print "Deduplicate products...\n";
     foreach my $file (bsd_glob("$temp_dir/chunk_*.csv")) {
-        open my $fh, '<:encoding(UTF-8)', $file or die "Cannot open $file: $!";
+        open my $fh, '<', $file or die "Cannot open $file: $!";
         while (my $row = $csv->getline($fh)) {
             my ($vendor, $product) = @$row;
-            my $key = lc("$vendor\t$product");  # Case-insensitive comparison
+            my $key = lc("$vendor:$product");  # Case-insensitive comparison
 
             unless ($seen{$key}++) {
                 push @lines, $row;
@@ -144,18 +145,23 @@ sub combine_csv_chunks {
         close $fh;
     }
 
+    print "Sorting products...\n";
     # Sort the unique lines
     @lines = sort {
-        lc("$a->[0]\t$a->[1]") cmp lc("$b->[0]\t$b->[1]")
+        lc("$a->[0]:$a->[1]") cmp lc("$b->[0]:$b->[1]")
     } @lines;
 
     # Write to output file
+    print "Write Consolidated Product File...\n";
     my $output_path = File::Spec->catfile($temp_dir, $output_filename);
-    open my $out, '>:encoding(UTF-8)', $output_path or die "Cannot write to $output_path: $!";
-    $csv->print($out, $_) for @lines;
-    close $out;
+    open my $fh_out, '>', $output_path or die "Cannot write to $output_path: $!";
 
-    return $output_path;
+    # Write to file (corrected)
+    foreach my $line (@lines) {
+        $csv->print($fh_out, $line);
+    }
+
+    close $fh_out;
 }
 
 # Combine all CSV files
@@ -164,7 +170,7 @@ my $result_path = combine_csv_chunks($TEMP_DIR);
 
 # Create final JSON file
 print "Creating JSON output...\n";
-open(my $csv_fh, '<:encoding(UTF-8)', "$TEMP_DIR/combined.csv") or die "Cannot open combined.csv: $!";
+open(my $csv_fh, '<', "$TEMP_DIR/combined.csv") or die "Cannot open combined.csv: $!";
 my @entries;
 while (my $row = $csv->getline($csv_fh)) {
     my ($vendor, $product, $filter, $title) = @$row;
@@ -177,7 +183,7 @@ while (my $row = $csv->getline($csv_fh)) {
 }
 close($csv_fh);
 
-open(my $json_fh, '>:encoding(UTF-8)', "$OUTPUT_DIR/cpe-product-db.json") or die "Cannot open cpe-product-db.json: $!";
+open(my $json_fh, '>', "$OUTPUT_DIR/cpe-product-db.json") or die "Cannot open cpe-product-db.json: $!";
 print $json_fh encode_json({ table => \@entries });
 close($json_fh);
 
