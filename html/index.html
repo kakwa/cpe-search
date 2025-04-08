@@ -206,9 +206,8 @@
         };
 
         function calculatePageSize() {
-            const tableContainer = document.querySelector('.table-container');
-            const rowHeight = 40; // Approximate height of a row in pixels
-            const availableHeight = window.innerHeight - tableContainer.offsetTop - 120; // Subtract header and pagination space
+            const rowHeight = 43; // Approximate height of a row in pixels
+            const availableHeight = window.innerHeight - 213; // Subtract header and pagination space
             return Math.max(1, Math.floor(availableHeight / rowHeight));
         }
 
