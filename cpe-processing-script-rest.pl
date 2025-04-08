@@ -75,8 +75,6 @@ sub process_json {
             $title = $t->{title} if $t->{lang} eq "en";
         }
 
-        print "Processing CPE: $cpe\n";
-
         if ($cpe =~ /^cpe:([0-9.]+):([a-z]):([^:]+):([^:]+):([^:]+):/) {
             my ($cpe_version, $part, $vendor, $product, $version) = ($1, $2, $3, $4, $5);
 
