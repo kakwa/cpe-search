@@ -138,10 +138,115 @@
             opacity: 1;
         }
         /* Column widths */
-        .col-title { width: 35%; }
+        .col-title { width: 30%; }
         .col-vendor { width: 15%; }
         .col-product { width: 15%; }
-        .col-filter { width: 35%; }
+        .col-filter { width: 30%; }
+        .col-actions { width: 10%; }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 70%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+            border-radius: 8px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: black;
+        }
+        .cve-button {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .cve-button:hover {
+            background-color: #c82333;
+        }
+        .cve-button.loading {
+            background-color: #6c757d;
+            cursor: wait;
+        }
+        .cve-details {
+            margin-top: 20px;
+        }
+        .cve-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .cve-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .cve-id {
+            font-weight: bold;
+            color: #dc3545;
+        }
+        .cve-severity {
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+        }
+        .severity-low { background-color: #28a745; }
+        .severity-medium { background-color: #ffc107; color: black; }
+        .severity-high { background-color: #dc3545; }
+        .severity-critical { background-color: #6f42c1; }
+        .cve-description {
+            margin: 10px 0;
+        }
+        .cve-metrics {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .cve-references {
+            margin-top: 10px;
+        }
+        .cve-references ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        .cve-references li {
+            margin-bottom: 5px;
+        }
+        .cve-references a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .cve-references a:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -167,6 +272,7 @@
                         <th class="col-vendor">Vendor</th>
                         <th class="col-product">Product</th>
                         <th class="col-filter">Filter</th>
+                        <th class="col-actions">Vulnerabilities</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody"></tbody>
@@ -181,6 +287,13 @@
         </div>
     </div>
     <div id="toast" class="toast">Copied to clipboard</div>
+    <div id="cveModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>CVE Details</h2>
+            <div id="cveDetails" class="cve-details"></div>
+        </div>
+    </div>
 
     <script>
         const CACHE_KEY = 'cpe_dict_cache';
@@ -370,6 +483,9 @@
                             ${highlightText(' ' + item.filter)}
                         </button>
                     </td>
+                    <td class="col-actions">
+                        <button class="cve-button" onclick="showCVEs('${item.filter}')">CVEs</button>
+                    </td>
                 `;
                 tableBody.appendChild(row);
             });
@@ -471,6 +587,105 @@
                 clearTimeout(timeout);
                 timeout = setTimeout(later, wait);
             };
+        }
+
+        // Modal functionality
+        const modal = document.getElementById('cveModal');
+        const closeBtn = document.getElementsByClassName('close')[0];
+
+        closeBtn.onclick = function() {
+            modal.style.display = "none";
+        }
+
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        async function showCVEs(filter) {
+            const modal = document.getElementById('cveModal');
+            const cveDetails = document.getElementById('cveDetails');
+            const button = event.target;
+
+            button.classList.add('loading');
+            button.textContent = 'Loading...';
+
+            try {
+                const response = await fetch(`https://nvd.kakwalab.ovh/rest/json/cves/2.0?virtualMatchString=${filter}&versionStart=0.0&versionStartType=excluding`);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const data = await response.json();
+                cveDetails.innerHTML = '';
+
+                if (data.vulnerabilities && data.vulnerabilities.length > 0) {
+                    data.vulnerabilities
+                        .sort((a, b) => new Date(b.cve.published) - new Date(a.cve.published))
+                        .forEach(vuln => {
+                            const cve = vuln.cve;
+                            const severity = getSeverity(cve);
+                            const severityClass = getSeverityClass(severity);
+
+                            const cveItem = document.createElement('div');
+                            cveItem.className = 'cve-item';
+                            cveItem.innerHTML = `
+                                <div class="cve-header">
+                                    <a href="https://nvd.nist.gov/vuln/detail/${cve.id}" target="_blank" class="cve-id">${cve.id}</a>
+                                    <span class="cve-severity ${severityClass}">${severity}</span>
+                                </div>
+                                <div class="cve-description">
+                                    ${cve.descriptions.find(d => d.lang === 'en').value}
+                                </div>
+                                <div class="cve-metrics">
+                                    <strong>CVSS v3.1:</strong><br>
+                                    ${getCVSSMetrics(cve)}
+                                </div>
+                            `;
+                            cveDetails.appendChild(cveItem);
+                        });
+                } else {
+                    cveDetails.innerHTML = '<p>No CVEs found for this product.</p>';
+                }
+
+                modal.style.display = "block";
+            } catch (error) {
+                console.error('Error fetching CVEs:', error);
+                cveDetails.innerHTML = '<p>Error loading CVEs. Please try again later.</p>';
+                modal.style.display = "block";
+            } finally {
+                button.classList.remove('loading');
+                button.textContent = 'CVEs';
+            }
+        }
+
+        function getSeverity(cve) {
+            if (!cve.metrics || !cve.metrics.cvssMetricV31) return 'UNKNOWN';
+            const primaryMetric = cve.metrics.cvssMetricV31.find(m => m.type === 'Primary') || cve.metrics.cvssMetricV31[0];
+            return primaryMetric.cvssData.baseSeverity;
+        }
+
+        function getSeverityClass(severity) {
+            return `severity-${severity.toLowerCase()}`;
+        }
+
+        function getCVSSMetrics(cve) {
+            if (!cve.metrics || !cve.metrics.cvssMetricV31) return 'No CVSS metrics available';
+            const primaryMetric = cve.metrics.cvssMetricV31.find(m => m.type === 'Primary') || cve.metrics.cvssMetricV31[0];
+            const cvss = primaryMetric.cvssData;
+            return `
+                Base Score: ${cvss.baseScore}<br>
+                Vector: ${cvss.vectorString}<br>
+                Attack Vector: ${cvss.attackVector}<br>
+                Attack Complexity: ${cvss.attackComplexity}<br>
+                Privileges Required: ${cvss.privilegesRequired}<br>
+                User Interaction: ${cvss.userInteraction}<br>
+                Scope: ${cvss.scope}<br>
+                Confidentiality Impact: ${cvss.confidentialityImpact}<br>
+                Integrity Impact: ${cvss.integrityImpact}<br>
+                Availability Impact: ${cvss.availabilityImpact}
+            `;
         }
     </script>
 </body>
