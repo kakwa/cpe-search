@@ -125,7 +125,7 @@ sub combine_csv_chunks {
     my ($temp_dir, $output_filename) = @_;
     $output_filename ||= 'combined.csv';
 
-    my %seen;
+    my %seen;  # Hash to track unique vendor-product combinations
     my @lines;
 
     # Read and collect all lines from chunk_*.csv
@@ -133,7 +133,12 @@ sub combine_csv_chunks {
         open my $fh, '<:encoding(UTF-8)', $file or die "Cannot open $file: $!";
         while (my $line = <$fh>) {
             chomp $line;
-            unless ($seen{$line}++) {
+            my ($vendor, $product) = split(/\Q$DELIMITER\E/, $line, 3);  # Split only first two columns
+            
+            # Create a key for deduplication
+            my $key = lc("$vendor$DELIMITER$product");  # Case-insensitive comparison
+            
+            unless ($seen{$key}++) {
                 push @lines, $line;
             }
         }
