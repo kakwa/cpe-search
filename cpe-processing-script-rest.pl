@@ -17,18 +17,6 @@ my $START_INDEX = 0;
 my $OUTPUT_DIR = "html";
 my $TEMP_DIR = tempdir("cpe-rest.XXXXXX", CLEANUP => 1);
 
-# Create CSV object
-my $csv = Text::CSV::Encoded->new ({
-    encoding => 'utf-8',
-    encoding_in => 'utf-8',
-    encoding_out => 'utf-8',
-    eol => "\n",
-    binary   => 1,
-    auto_diag => 1,
-    sep_char  => ",",
-}) or die "Cannot use CSV: " . Text::CSV::Encoded->error_diag();
-$csv->encoding("utf-8");
-
 # Set up signal handlers
 $SIG{INT} = $SIG{TERM} = sub {
     print "Cleaning up temporary files...\n";
@@ -67,6 +55,15 @@ sub process_json {
     open(my $out_fh, '>', $output_file) or die "Cannot open $output_file: $!";
 
     my $json = decode_json($json_text);
+
+    my $csv = Text::CSV::Encoded->new ({
+        encoding_in => 'utf-8',
+        encoding_out => 'utf-8',
+        eol => "\n",
+        binary   => 1,
+        auto_diag => 1,
+        sep_char  => ",",
+    }) or die "Cannot use CSV: " . Text::CSV::Encoded->error_diag();
 
     foreach my $product (@{$json->{products}}) {
         my $cpe = $product->{cpe}->{cpeName};
@@ -128,6 +125,15 @@ sub combine_csv_chunks {
     my %seen;  # Hash to track unique vendor-product combinations
     my @lines;
 
+    my $csv = Text::CSV::Encoded->new ({
+        encoding_in => 'utf8',
+        encoding_out => 'utf8',
+        eol => "\n",
+        binary => 1,
+        auto_diag => 1,
+        sep_char  => ",",
+    }) or die "Cannot use CSV: " . Text::CSV::Encoded->error_diag();
+
     # Read and collect all lines from chunk_*.csv
     print "Deduplicate products...\n";
     foreach my $file (bsd_glob("$temp_dir/chunk_*.csv")) {
@@ -162,28 +168,42 @@ sub combine_csv_chunks {
     close $fh_out;
 }
 
+sub create_json_out {
+    my ($in_csv, $out_json) = @_;
+    my $csv = Text::CSV::Encoded->new ({
+        encoding_in => 'utf-8',
+        encoding_out => 'utf-8',
+        eol => "\n",
+        binary   => 1,
+        auto_diag => 1,
+        sep_char  => ",",
+    }) or die "Cannot use CSV: " . Text::CSV::Encoded->error_diag();
+
+    open(my $csv_fh, '<', "$in_csv") or die "Cannot open combined.csv: $!";
+    my @entries;
+    while (my $row = $csv->getline($csv_fh)) {
+        my ($vendor, $product, $filter, $title) = @$row;
+        push @entries, {
+            title => $title,
+            vendor => $vendor,
+            product => $product,
+            filter => $filter
+        };
+    }
+    close($csv_fh);
+    open(my $json_fh, '>', "$out_json") or die "Cannot open cpe-product-db.json: $!";
+    print $json_fh encode_json({ table => \@entries });
+    close($json_fh);
+}
+
+
 # Combine all CSV files
 print "Combining results...\n";
 my $result_path = combine_csv_chunks($TEMP_DIR);
 
 # Create final JSON file
 print "Creating JSON output...\n";
-open(my $csv_fh, '<', "$TEMP_DIR/combined.csv") or die "Cannot open combined.csv: $!";
-my @entries;
-while (my $row = $csv->getline($csv_fh)) {
-    my ($vendor, $product, $filter, $title) = @$row;
-    push @entries, {
-        title => $title,
-        vendor => $vendor,
-        product => $product,
-        filter => $filter
-    };
-}
-close($csv_fh);
-
-open(my $json_fh, '>', "$OUTPUT_DIR/cpe-product-db.json") or die "Cannot open cpe-product-db.json: $!";
-print $json_fh encode_json({ table => \@entries });
-close($json_fh);
+create_json_out("$TEMP_DIR/combined.csv", "$OUTPUT_DIR/cpe-product-db.json");
 
 # Compress files
 print "Compressing files...\n";
