@@ -56,7 +56,7 @@ Publish `<your_static_webroot>` using static hosting (`nginx`, `apache` or any o
 
 Add the following cron:
 ```cron
-12 3 * * * API_KEY='<nvd api key>' OUTPUT_DIR='<your_static_webroot>' cpe-processing-script-rest.pl`
+12 3 * * * API_KEY='<nvd api key>' OUTPUT_DIR='<your_static_webroot>' /path/to/cpe-processing-script-rest.pl
 ```
 
 note: `API_KEY` is optional (go to https://nvd.nist.gov/developers/request-an-api-key to get one).
