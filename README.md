@@ -50,13 +50,23 @@ python3 -m http.server -d html/ 8080
 
 ## Production
 
+Optionally, get a NVD `API_KEY`, go to https://nvd.nist.gov/developers/request-an-api-key to get one.
+
 Copy over the content of `html/` into `<your_static_webroot>`.
+
+Initialize CPE DBs:
+
+```bash
+# API_KEY is optional
+API_KEY='<nvd api key>' \
+OUTPUT_DIR='<your_static_webroot>' \
+./cpe-processing-script-rest.pl
+```
 
 Publish `<your_static_webroot>` using static hosting (`nginx`, `apache` or any other server).
 
-Add the following cron:
+Add the following cron to update it daily, tweak the minutes/hours:
+
 ```cron
 12 3 * * * API_KEY='<nvd api key>' OUTPUT_DIR='<your_static_webroot>' /path/to/cpe-processing-script-rest.pl
 ```
-
-note: `API_KEY` is optional (go to https://nvd.nist.gov/developers/request-an-api-key to get one).
