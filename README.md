@@ -14,16 +14,21 @@ The raw CSV/JSON files (gziped) are available here:
 
 The CPE Database is updated daily.
 
-## Self-Hosting
+# Self-Hosting
+
+## Dependencies
 
 If you want to self-host the DB:
 
 Install dependencies:
 ```
-sudo apt install libwww-perl libtext-csv-perl libtext-csv-encoded-perl
+sudo apt install libwww-perl libtext-csv-encoded-perl
 ```
 
-Build the DB csv & json DB:
+## CPE DB generation
+
+Build the csv & json DBs:
+
 ```shell
 ./cpe-processing-script-rest.pl
 
@@ -32,13 +37,26 @@ ls html/
 cpe-product-db.csv.gz  cpe-product-db.json.gz  favicon.ico  index.html
 ```
 
-Testing it:
+## Testing
+
+Once the DB is generated, run:
+
 ```shell
-cd html/
 # Using Python's built-in server
-python3 -m http.server 8000
+python3 -m http.server -d html/ 8080
+
+# website available at http://127.0.0.1:8080
 ```
 
-Then visit http://127.0.0.1:8000 with your browser.
+## Production
 
-Use servers like `apache` or `nginx` to serve the content of `html/` in production.
+Copy over the content of `html/` into `<your_static_webroot>`.
+
+Publish `<your_static_webroot>` using static hosting (`nginx`, `apache` or any other server).
+
+Add the following cron:
+```cron
+12 3 * * * API_KEY='<nvd api key>' OUTPUT_DIR='<your_static_webroot>' cpe-processing-script-rest.pl`
+```
+
+note: `API_KEY` is optional (go to https://nvd.nist.gov/developers/request-an-api-key to get one).

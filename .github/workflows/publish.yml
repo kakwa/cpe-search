@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: sudo apt install -y libwww-perl libtext-csv-perl libtext-csv-encoded-perl
 
-      - name: Build documentation
+      - name: Recover & Build CPE List
         run: API_KEY=${{ secrets.API_KEY }} ./cpe-processing-script-rest.pl
 
       - name: Configure Pages

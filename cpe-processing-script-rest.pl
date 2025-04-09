@@ -15,6 +15,9 @@ use Text::CSV::Encoded;
 my $RESULTS_PER_PAGE = 10000;
 my $START_INDEX = 0;
 my $OUTPUT_DIR = "html";
+if ($ENV{OUTPUT_DIR}) {
+    $OUTPUT_DIR = $ENV{OUTPUT_DIR};
+}
 my $TEMP_DIR = tempdir("cpe-rest.XXXXXX", CLEANUP => 1);
 
 # Set up signal handlers
