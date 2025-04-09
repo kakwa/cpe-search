@@ -338,7 +338,7 @@
 
             if (cachedData && cachedData.data && !forceRefresh) {
                 response = cachedData.data;
-                updateStatus('Using cached data. Last updated: ' + new Date(cachedData.timestamp).toLocaleString());
+                updateStatus('Using cached data');
                 showLoading(false);
             } else {
                 console.log("fetching data");
@@ -391,7 +391,7 @@
                 updateStatus('Fetching data...');
                 const decompressedData = await fetchDecompress('./cpe-product-db.json.gz', forceRefresh);
                 data = JSON.parse(decompressedData).table;
-                updateStatus('Data loaded successfully. Last updated: ' + new Date().toLocaleString());
+                updateStatus('Data loaded successfully.');
                 initializeTable();
             } catch (error) {
                 console.error("Error fetching data:", error);
