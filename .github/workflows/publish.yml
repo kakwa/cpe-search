@@ -35,6 +35,15 @@ jobs:
       - name: Recover & Build CPE List
         run: API_KEY=${{ secrets.API_KEY }} ./cpe-processing-script-rest.pl
 
+      - name: Update LAST_CPE_DB_UPDATE and Commit
+        run: |
+          date > LAST_CPE_DB_UPDATE
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add LAST_CPE_DB_UPDATE
+          git commit -m "Update LAST_CPE_DB_UPDATE timestamp"
+          git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:main
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
